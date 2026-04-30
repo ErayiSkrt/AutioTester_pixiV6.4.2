@@ -5,7 +5,8 @@
   "description": "Standalone tester for @pixi/sound PlayOptions (start, end, loop, volume).",
   "scripts": {
     "start": "webpack serve",
-    "build": "webpack --mode production"
+    "build": "webpack --mode production",
+    "buildAndRun": "npm run build && start \"\" chrome \"%cd%\\dist\\index.html\""
   },
   "dependencies": {
     "@pixi/sound": "4.3.3",
