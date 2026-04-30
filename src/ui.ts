@@ -1,7 +1,7 @@
 import { IMediaInstance, PlayOptions } from '@pixi/sound';
 import { AudioTester, LoadedAsset } from './AudioTester';
 
-const DEFAULT_VOLUME = 0.7;
+const DEFAULT_VOLUME = 0.4;
 const ACCEPTED_EXT = ['m4a', 'ogg', 'oga', 'opus', 'mp3', 'mpeg', 'wav', 'aiff', 'aac', 'caf', 'flac'];
 
 interface RowState {
@@ -312,6 +312,13 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
     state.volumeEl.addEventListener('input', () => {
       state.volumeReadoutEl.textContent = parseFloat(state.volumeEl.value).toFixed(2);
     });
+    rowEl.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      // Keep existing control interactions intact; only row background toggles selection.
+      if (target.closest('button, input, label, a')) return;
+      state.selectEl.checked = !state.selectEl.checked;
+    });
     state.activeLayerEl.addEventListener('change', () => {
       if (!state.activeLayerEl.checked) return;
       if (layeredSession) performLayerSwap(state.asset.name);
@@ -364,6 +371,12 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
     const raw = parseFloat(fadeDurationEl.value);
     if (!Number.isFinite(raw) || raw < 0) return 1;
     return raw;
+  }
+
+  function getLayeredActiveVolume(): number {
+    const raw = parseFloat(masterVolEl.value);
+    if (!Number.isFinite(raw)) return DEFAULT_VOLUME;
+    return clamp01(raw);
   }
 
   function getSelectedRows(): RowState[] {
@@ -423,12 +436,13 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
     const prevActiveName = activeName;
     const startFrom = clamp01(fromInst.volume);
     const startTo = clamp01(toInst.volume);
+    const targetTo = getLayeredActiveVolume();
 
     const completeSwap = () => {
       if (!layeredSession) return;
       layeredSession.activeLayerName = nextName;
       fromInst.volume = 0;
-      toInst.volume = 1;
+      toInst.volume = targetTo;
       const activeState = rows.get(nextName);
       if (activeState) activeState.activeLayerEl.checked = true;
       syncNowPlayingLayerSwitches();
@@ -447,7 +461,7 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
       const elapsedSec = (performance.now() - startedAt) / 1000;
       const t = clamp01(elapsedSec / durationSec);
       fromInst.volume = clamp01(startFrom * (1 - t));
-      toInst.volume = clamp01(startTo + (1 - startTo) * t);
+      toInst.volume = clamp01(startTo + (targetTo - startTo) * t);
       if (t >= 1) {
         if (layeredSession) {
           layeredSession.fadeRafId = null;
@@ -533,7 +547,7 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
       });
       return;
     }
-    activeInstance.volume = 1;
+    activeInstance.volume = getLayeredActiveVolume();
 
     layeredSession = {
       instances,
@@ -713,6 +727,10 @@ export function buildUI(root: HTMLElement, tester: AudioTester): void {
 
     const tick = () => {
       if (!nowPlaying.has(instance)) return;
+      // Keep the meter in sync when volume is changed programmatically (e.g. layered crossfades).
+      const liveVolume = clamp01(instance.volume);
+      volumeEl.value = liveVolume.toFixed(2);
+      volumeReadoutEl.textContent = liveVolume.toFixed(2);
       const elapsed = (performance.now() - entry.startedAt) / 1000;
       const segDur = entry.duration > 0 ? entry.duration : 1;
       const ratio = entry.loop ? (elapsed % segDur) / segDur : Math.min(1, elapsed / segDur);
